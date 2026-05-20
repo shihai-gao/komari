@@ -1,36 +1,38 @@
+# 阶段1：编译 Go 程序（构建器）
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /app
+
+# 安装 git
+RUN apk add --no-cache git
+
+# 复制源码
+COPY . .
+
+# 编译
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o komari main.go
+
+# 阶段2：运行镜像（最终）
 FROM alpine:3.21
 
 WORKDIR /app
 
-# Docker buildx 会在构建时自动填充这些变量
-ARG TARGETOS
-ARG TARGETARCH
-
+# 安装依赖
 RUN apk add --no-cache ca-certificates curl tzdata
 
+# 下载 cloudflared
 RUN set -eux; \
-    case "${TARGETARCH}" in \
-      amd64) cloudflared_arch="amd64" ;; \
-      386) cloudflared_arch="386" ;; \
-      arm64) cloudflared_arch="arm64" ;; \
-      arm) cloudflared_arch="arm" ;; \
-      *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${cloudflared_arch}" -o /usr/local/bin/cloudflared; \
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" -o /usr/local/bin/cloudflared; \
     chmod +x /usr/local/bin/cloudflared
 
-COPY komari-${TARGETOS}-${TARGETARCH} /app/komari
+# 从编译阶段复制二进制
+COPY --from=builder /app/komari /app/komari
 
 RUN chmod +x /app/komari
 
 ENV GIN_MODE=release
 ENV KOMARI_DB_TYPE=sqlite
 ENV KOMARI_DB_FILE=/app/data/komari.db
-ENV KOMARI_DB_HOST=localhost
-ENV KOMARI_DB_PORT=3306
-ENV KOMARI_DB_USER=root
-ENV KOMARI_DB_PASS=
-ENV KOMARI_DB_NAME=komari
 ENV KOMARI_LISTEN=0.0.0.0:25774
 
 EXPOSE 25774
