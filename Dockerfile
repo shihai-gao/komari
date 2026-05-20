@@ -70,4 +70,4 @@ VOLUME ["/app/data"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:25774/ping || exit 1
 
-CMD ["/app/komari", "server"]
+CMD ["/bin/sh", "-c", "ls -la /app && ls -la /app/data && sleep infinity"]
