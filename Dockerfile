@@ -11,14 +11,16 @@ RUN git clone --depth 1 -b radix https://github.com/komari-monitor/komari-web.gi
 RUN npm install
 RUN npm run build
 
-
 # ==========================================
-# 阶段 2：编译 Go 后端
+# 阶段 2：编译 Go 后端（修复 CGO）
 # ==========================================
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 RUN apk add --no-cache git
+
+# 【修复 1】安装 CGO 编译依赖
+RUN apk add --no-cache gcc musl-dev sqlite-dev
 
 COPY . .
 
@@ -29,9 +31,8 @@ COPY --from=web-builder /web/dist /app/public/defaultTheme/dist
 # 验证静态资源
 RUN ls -la /app/public/defaultTheme/dist/ && test -f /app/public/defaultTheme/dist/index.html
 
-# 编译二进制
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/komari main.go
-
+# 【修复 2】启用 CGO 编译
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o /app/komari main.go
 
 # ==========================================
 # 阶段 3：运行环境
@@ -40,13 +41,13 @@ FROM alpine:3.21
 
 WORKDIR /app
 
-# 安装运行时依赖
-RUN apk add --no-cache ca-certificates tzdata curl
+# 【修复 3】运行时添加 sqlite-libs（CGO 编译的二进制需要）
+RUN apk add --no-cache ca-certificates tzdata curl sqlite-libs
 
 # 复制后端二进制
 COPY --from=builder /app/komari /app/komari
 
-# 复制静态资源（这一步很关键）
+# 复制静态资源
 COPY --from=builder /app/public /app/public
 
 # 创建数据目录
@@ -63,5 +64,4 @@ ENV PORT=25774
 
 EXPOSE 25774
 
-# 注意：先不要加 HEALTHCHECK，避免干扰排查
 CMD ["/bin/sh", "-c", "echo '== app files ==' && ls -la /app && echo '== public ==' && ls -la /app/public && echo '== data ==' && ls -la /app/data && echo '== starting komari ==' && exec /app/komari"]
